@@ -34,6 +34,7 @@ def im2col(input_data, filter_h, filter_w, stride=1, pad=0):
         y_max = y + stride*out_h
         for x in range(filter_w):
             x_max = x + stride*out_w
+            #y:y_max:stride 从小到大间隔stride
             col[:, :, y, x, :, :] = img[:, :, y:y_max:stride, x:x_max:stride]
     # 按(0, 4, 5, 1, 2, 3)顺序，交换col的列，然后改变形状
     col = col.transpose(0, 4, 5, 1, 2, 3).reshape(N*out_h*out_w, -1)
@@ -73,7 +74,7 @@ class Convolution:
         self.db = None
 
     def forward(self, x):
-        # 卷积核大小
+        # 卷积核大小，FN就是实际就是输出的Channel，C是输入的channel
         FN, C, FH, FW = self.W.shape
         # 数据数据大小
         N, C, H, W = x.shape
@@ -82,9 +83,9 @@ class Convolution:
         out_w = 1 + int((W + 2*self.pad - FW) / self.stride)
         # 利用im2col转换为行
         col = im2col(x, FH, FW, self.stride, self.pad)
-        # 卷积核转换为列，展开为2维数组
+        # 卷积核转换为列，展开为2维数组 
         col_W = self.W.reshape(FN, -1).T
-        # 计算正向传播
+        # 计算正向传播，矩阵相乘(N*out_h*out_w,C*filter_h*filter_w) * (C*filter_h*filter_w,FN) = N*out_h*out_w*FN
         out = np.dot(col, col_W) + self.b
         out = out.reshape(N, out_h, out_w, -1).transpose(0, 3, 1, 2)
 
@@ -108,3 +109,56 @@ class Convolution:
         dx = col2im(dcol, self.x.shape, FH, FW, self.stride, self.pad)
 
         return dx
+
+
+# 白板默写版本
+
+def img2col(input,filter_h,filter_w,out_h,out_w,stride=1,pad=0):
+
+	#input 大小
+	N, C, H, W = input.shape
+
+	# pad
+	img = np.pad(input,[(0,0),(0,0),(pad,pad),(pad,pad)], 'constant')
+
+	# 生成col矩阵 N*C_in*filter_h*filter_w*out_h*out_w的矩阵
+	col = np.zeros((N,C,filter_h,filter_w,out_h,out_w))
+
+	#填充col向量
+	for y in range(filter_h):
+		y_max = y + stride*out_h
+		for x  in range(filter_w):
+			x_max = x + stride*out_w
+			col[:,:,y,x,:,:] = img[:,:,y:y_max:stride,x:x_max:stride]
+
+	#交换col的位置并且reshape到(N*out_h*out_w,C*filter_h*filter_w)
+	col = col.transpose(0,4,5,1,2,3).reshape(N*out_h*out_w,-1)
+	return col
+
+
+# caffe 的卷积实现
+def conv2d(input,weight,stride=1,pad=0):
+
+	#卷积核大小,FN就是实际就是输出的Channel，C是输入的channel
+	FN, C, FH, FW = weight.shape
+
+	#input 大小
+	N , C, H , W = input.shape
+
+	#输出大小
+	out_h = (H - FH + 2 * pad) // stride + 1
+	out_w = (W - FW + 2 * pad) // stride + 1
+
+	#img2col 图像转向量
+	col = img2col(input,FH,FW,out_h,out_w)
+
+	#卷积核转换为列,即变为（FN,C*f_h*f_w）,需要转置
+	col_w = weight.reshape(FN,-1).T
+
+	#矩阵相乘(N*out_h*out_w,C*filter_h*filter_w) * (C*filter_h*filter_w,FN) = (N*out_h*out_w)*FN
+	out = np.dot(col,col_w)	
+
+	#reshape+transpose
+	out = out.reshape(N,out_h,out_w,-1).transpose(0,3,1,2)
+
+	return out
