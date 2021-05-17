@@ -14,7 +14,8 @@
 
 class Solution:
     def maxPathSum(self, root: TreeNode) -> int:
-
+        
+        # 类全局变量
         self.max_sum = float("-inf")
 
         def dfs(node):
